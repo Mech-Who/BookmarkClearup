@@ -1,47 +1,28 @@
 '''
 Author: HuShuhan 873933169@qq.com
 Date: 2025-03-14 16:59:32
-LastEditors: HuShuhan 873933169@qq.com
-LastEditTime: 2025-03-14 17:01:43
+LastEditors: hushuhan 873933169@qq.com
+LastEditTime: 2025-03-15 01:12:41
 FilePath: \BookmarkClearup\main.py
 Description: 参考自：https://blog.csdn.net/geoker/article/details/131030675，目标是合并不同浏览器的书签，并且不需要太多手动操作。
 '''
 # standard library
-from pathlib import Path
+import sys
+import logging
 from typing import *
+from pathlib import Path
+from datetime import datetime
 # third-party
-import requests
 from lxml import etree
-
-class Page(object):
-    def __init__(self, title, url):
-        self.title = title
-        self.url = url
-
-    def __eq__(self, page: "Page"):
-        return page.url == self.url
+# user custom
+from src.entity import Page, Bookmark
+from src.functional import merge
 
 
-class Bookmark(object):
-    def __init__(self, page_list: List[Page]):
-        self.pages = set(page_list)
-
-    def append(self, page: Page) -> NoReturn:
-        self.pages.add(page)
-
-    def remove(self, page: Page) -> NoReturn:
-        self.pages.remove(page)
-
-    @property
-    def pages(self) -> set:
-        return self.pages
-
-    def merge(self, bm2: "Bookmark"):
-        return self.pages.union(bm2.pages)
+logger = logging.getLogger(__name__)
 
 
-
-def parse_bookmark(bookmark_path: str, save_filename: str=None, is_save: bool=False) -> List[Page]:
+def parse_bookmark(bookmark_path: str, save_filename: str=None, is_save: bool=False) -> Bookmark:
     """
     # @description: 读取导出的书签文件的内容并保存
     # @param {str} bookmark 导出的书签文件路径
@@ -58,24 +39,58 @@ def parse_bookmark(bookmark_path: str, save_filename: str=None, is_save: bool=Fa
     links = tree.xpath('//a')
     links = [each for each in links]
     links.sort(key=lambda x: x.attrib['href'])
-    # 打印每个链接的标题和网址
-    print(len(links))
-    # x = [f"{link.text}\t{link.attrib['href']}" for link in links]
-    x = [Page(link.text, link.attrib['href']) for link in links]
+    # 记录每个链接的标题和网址
+    x = tuple(Page(link.text, link.attrib['href']) for link in links)
     if is_save:
         if save_filename is None:
             save_filename = bookmark_path.parent / f'{bookmark_path.stem}.txt'
         with open(save_filename, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(x.pages()))
-    return x
+            f.write('\n'.join(x))
+    return Bookmark(x)
+
+
+def parse_bookmark_with_folder():
+    pass
 
 
 def main():
-    print("Hello from bookmarkclearup!")
-    bookmark = "bookmarks_2025_3_14.html"
-    bookmark2 = "favorites_2025_3_14.html"
-    parse_bookmark(bookmark2)
+    setup_log()
+    logger.info("Hello from bookmarkclearup!")
+    bookmark1 = "bookmarks/bookmarks_2025_3_14.html"
+    bm1 = parse_bookmark(bookmark1)
+    # print(bm1)
+    bookmark2 = "bookmarks/favorites_2025_3_14.html"
+    bm2 = parse_bookmark(bookmark2)
+    # count = 0
+    # for page in bm1.get_yield():
+    #     print(page)
+    #     count += 1
+    #     if count > 10:
+    #         break
+    logger.info(f"{len(bm1)=}")
+    logger.info(f"{len(bm2)=}")
+    # bm3 = bm1.merge(bm2)
+    bm3 = merge(bm1, bm2)
+    logger.info(f"{len(bm3)=}")
+
+
+def setup_log(log_filename: str=None) -> NoReturn:
+    """
+    description: 配置日志设置
+    param log_filename {str}: 日志文件名，自动添加后缀'.log'，默认为'日期_时间'，例如'20250315_122000'
+    return {*}
+    """
+    # log config
+    if log_filename is None:
+        log_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = Path(f"./logs/{log_filename}.log")
+    logging.basicConfig(level=logging.DEBUG,
+                        handlers=[
+                            logging.FileHandler(filename=str(log_path)),
+                            logging.StreamHandler(stream=sys.stdout)
+                        ])
 
 
 if __name__ == "__main__":
+    # main
     main()
