@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 
 
 def parse_json_folder(json: dict) -> "BookmarkFolder":
+    """
+    将书签目录信息转换为 BookmarkFolder 对象。
+    通过递归，实现子层级的解析。
+    """
     from src.entity import BookmarkFolder
     children = json["children"]
     date_modified = json["date_modified"]
@@ -26,6 +30,9 @@ def parse_json_folder(json: dict) -> "BookmarkFolder":
 
 
 def parse_json_page(json: dict) -> "BookmarkPage":
+    """
+    将 json 格式的书签信息转换为 BookmarkPage 对象
+    """
     from src.entity import BookmarkPage
     return BookmarkPage(**json)
 
@@ -33,6 +40,7 @@ def parse_json_page(json: dict) -> "BookmarkPage":
 def parse_json_item(bmf_json: dict, parent: "BookmarkBase"=None) -> "BookmarkFolder":
     """
     将 json 格式的书签信息转化为 BookmarkFolder 对象
+    原理：递归解析
     """
     bmf_json["parent"] = parent
     bmf_json["path"] = parent.path / bmf_json['name'].strip() if parent is not None else Path("/")
@@ -47,6 +55,9 @@ def parse_json_item(bmf_json: dict, parent: "BookmarkBase"=None) -> "BookmarkFol
 
 
 def deduplication(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkPage":
+    """
+    实现两个 BookmarkFolder 对象间的去重。
+    """
     bmf1 = set([item for item in visit(bmf1)])
     bmf2 = set([item for item in visit(bmf2)])
     return list(bmf2 - bmf1)
@@ -54,7 +65,7 @@ def deduplication(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkPa
 
 def merge_two(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkFolder":
     """
-    TODO: 实现两个BookmarkFolder的合并
+    实现两个 BookmarkFolder 对象的合并
     """
     from src.entity import BookmarkFolder
     # 去重
@@ -74,7 +85,8 @@ def merge_two(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkFolder
 
 def merge(*bmfs: Tuple["BookmarkFolder"]) -> "BookmarkFolder":
     """
-    实现多个BookmarkFolder的合并
+    实现多个BookmarkFolder的合并。
+    基于merge_two，实现多个书签文件的合并。
     """
     res = bmfs[0]
     for i in range(1, len(bmfs)):
@@ -83,6 +95,12 @@ def merge(*bmfs: Tuple["BookmarkFolder"]) -> "BookmarkFolder":
 
 
 def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> NoReturn:
+    '''
+    description: 向 BookmarkFolder 对象中添加 BookmarkPage (书签)
+    param {*} bmf 要添加书签的 BookmarkFolder 对象
+    param {*} bmp 要添加到 BOokmarkFolder 的书签
+    return {*}
+    '''
     # 获得所有中间目录名
     print(f"{'='*10}[Insert bookmarkpage]{'='*10}")
     print(f"New item's path: {bmp.path}")
@@ -102,7 +120,7 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> NoReturn:
                 break
         else:
             print(f"Dir not found: '{path}'")
-            # 没有该目录
+            # 没有该目录，则创建目录对象
             timestamp = str(int(time.time()))
             dir_path = list(bmp.path.parents)[-1-idx]
             bmf_dir = BookmarkFolder(name=path,
@@ -138,13 +156,13 @@ def dump_json(bmf: "BookmarkFolder", save_name: Path|str) -> NoReturn:
 def visit(bmf: "BookmarkFolder") -> Generator:
     """
     实现一个for循环遍历所有标签
+    语法: yield + yield from
     """
     from src.entity import BookmarkPage, BookmarkFolder
     for i in bmf.get_yield():
         if isinstance(i, BookmarkPage):
             yield i
         elif isinstance(i, BookmarkFolder):
-            # TODO: check yield from 用法
             yield from visit(i)
         else:
             raise TypeError(f"Unknown type: {type(i)}")
