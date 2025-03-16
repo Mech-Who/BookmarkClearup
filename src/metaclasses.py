@@ -9,7 +9,8 @@ class LoggerMeta(type):
             new_class.log = logging.getLogger(name)
         return new_class
 
-class TimmingMeta(type):
+
+class TimmingMeta(type, metaclass=LoggerMeta):
     def __new__(cls, name, bases, dct):
         for attr_name, attr_value in dct.items():
             if callable(attr_value):  # 如果是方法，则添加性能监控装饰器
