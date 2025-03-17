@@ -1,6 +1,7 @@
 # standard library
 from pprint import pprint
 # user custom
+from src.functional import dump_json
 from src.functional import parse_json_item, merge_two
 
 bmf_json1 = {
@@ -141,3 +142,8 @@ print()
 bmf = merge_two(bmf1, bmf2)
 print()
 pprint(bmf)
+
+output = "bookmarks/merged.json"
+# dump_json(bmf, output)
+# bmf.dump_json(output)
+print(bmf.dumps_json())
