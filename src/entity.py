@@ -2,6 +2,7 @@
 import time
 import uuid
 import json
+import shutil
 from copy import deepcopy
 from typing import *
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 from lxml import etree
 # user custom
 from src.metaclasses import LoggerMeta
-from src.functional import parse_json_item, merge, dump_json, dump_html, insert
+from src.functional import parse_json_item, merge, dump_json, dump_html, dump_json_folder, insert
 from src.constant import DefaultBookmarkPath as DBPath
 
 """
@@ -170,9 +171,28 @@ class BookmarkFolder(BookmarkBase):
         """将书签记录转换回书签文件(*.html)"""
         dump_html(self, save_name)
 
-    def dump_json(self, save_name: Path|str):
+    def dump_json(self, save_path: Path|str=DBPath.CHROME) -> NoReturn:
         """将书签记录转换回书签文件(*.json)"""
-        dump_json(self, save_name)
+        if not isinstance(save_path, Path):
+            save_path = Path(save_path)
+        res_json = dump_json_folder(self)
+        bmf_json = None
+        if save_path.exists():
+            shutil.copy(save_path, f"{save_path}.bak") # 注意备份文件
+            with open(save_path, "r", encoding="utf-8") as f:
+                bmf_json = json.load(f)
+        if (bmf_json is not None
+            and bmf_json.get("roots")
+            and bmf_json.get("roots").get("bookmark_bar")):
+            bmf_json["roots"]["bookmark_bar"] = res_json
+            with open(str(save_path), "w") as f:
+                json.dump(bmf_json, f, indent = 4)
+        else:
+            with open(str(save_path), "w") as f:
+                json.dump(res_json, f, indent = 4)
+
+    def dumps_json(self):
+        return dump_json_folder(self)
 
     def clone_without_children(self):
         n = deepcopy(self)
@@ -208,8 +228,8 @@ class BookmarkFolder(BookmarkBase):
         if not isinstance(bm_filename, Path):
             bm_filename = Path(bm_filename)
         with open(bm_filename, "r", encoding="utf-8") as f:
-            bmf_json = json.load(f)["roots"]["bookmark_bar"]
-        return parse_json_item(bmf_json)
+            bmf_json = json.load(f)
+        return parse_json_item(bmf_json["roots"]["bookmark_bar"])
 
 
 class BookmarkIterator(metaclass=LoggerMeta):

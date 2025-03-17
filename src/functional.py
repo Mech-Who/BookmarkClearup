@@ -1,5 +1,6 @@
 # standard library
 import time
+import json
 import uuid
 from typing import *
 from pathlib import Path
@@ -101,6 +102,7 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> NoReturn:
     param {*} bmp 要添加到 BOokmarkFolder 的书签
     return {*}
     '''
+    from src.entity import BookmarkFolder
     # 获得所有中间目录名
     print(f"{'='*10}[Insert bookmarkpage]{'='*10}")
     print(f"New item's path: {bmp.path}")
@@ -128,7 +130,7 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> NoReturn:
                                     parent=root_bmf,
                                     type="folder",
                                     source="unknown",
-                                    guid=uuid.uuid4(),
+                                    guid=str(uuid.uuid4()),
                                     date_modified=timestamp,
                                     date_added=timestamp,
                                     date_last_used=timestamp)
@@ -146,11 +148,57 @@ def dump_html(bmf: "BookmarkFolder", save_name: Path|str) -> NoReturn:
     raise NotImplementedError("src.functional.dump_html 尚未实现！")
 
 
-def dump_json(bmf: "BookmarkFolder", save_name: Path|str) -> NoReturn:
+def dump_json_folder(bmf: "BookmarkFolder") -> NoReturn:
+    from src.entity import BookmarkFolder, BookmarkPage
+    # print(bmf.values)
+    # print(f"bmf: {type(bmf)}", dir(bmf))
+    bmf_dict = {
+        "date_added": bmf.date_added,
+        "date_last_used": bmf.date_last_used,
+        "guid": bmf.guid,
+        "id": bmf.id,
+        "name": bmf.name,
+        "source": bmf.source,
+        "type": bmf.type,
+        "date_modified": bmf.date_modified,
+        "children": [],
+    }
+    for child in bmf.children:
+        child_dict = None
+        if isinstance(child, BookmarkFolder):
+            child_dict = dump_json_folder(child)
+        elif isinstance(child, BookmarkPage):
+            child_dict = dump_json_page(child)
+        else:
+            raise TypeError(f"Unknown type of child: {type(child)}")
+        bmf_dict["children"].append(child_dict)
+    return bmf_dict
+
+
+def dump_json_page(bmp: "BookmarkPage") -> NoReturn:
+    bmp_dict = {
+        "date_added": bmp.date_added,
+        "date_last_used": bmp.date_last_used,
+        "guid": bmp.guid,
+        "id": bmp.id,
+        "name": bmp.name,
+        "source": bmp.source,
+        "type": bmp.type,
+        "meta_info": bmp.meta_info,
+        "show_icon": bmp.show_icon,
+        "visit_count": bmp.visit_count,
+        "url": bmp.url,
+    }
+    return bmp_dict
+
+
+def dump_json(bmf: "BookmarkFolder", save_path: Path|str) -> NoReturn:
     """
-    TODO: 将书签记录转换回书签文件(Bookmarks, 即json格式文件)
+    将书签记录转换回书签文件(Bookmarks, 即json格式文件)
     """
-    raise NotImplementedError("src.functional.dump_json 尚未实现！")
+    bmf_dict = dump_json_folder(bmf)
+    with open(str(save_path), "w") as f:
+        json.dump(bmf_dict, f, indent = 4)
 
 
 def visit(bmf: "BookmarkFolder") -> Generator:
