@@ -2,7 +2,7 @@
 Author: HuShuhan 873933169@qq.com
 Date: 2025-03-14 16:59:32
 LastEditors: hushuhan 873933169@qq.com
-LastEditTime: 2025-03-16 17:17:03
+LastEditTime: 2025-03-17 19:42:56
 FilePath: \BookmarkClearup\main.py
 Description: 参考自：https://blog.csdn.net/geoker/article/details/131030675，目标是合并不同浏览器的书签，并且不需要太多手动操作。
 '''
@@ -17,6 +17,7 @@ from lxml import etree
 # user custom
 from src.entity import BookmarkPage, BookmarkFolder
 from src.functional import merge
+from src.constant import DefaultBookmarkPath as DBPath
 
 
 logger = logging.getLogger(__name__)
@@ -42,27 +43,35 @@ def setup_log(log_filename: str=None) -> NoReturn:
 def main():
     setup_log()
     logger.info("Hello from bookmarkclearup!")
+    """1. 项目文件测试"""
     # * 书签文件读取
-    bm_dir = Path("./bookmarks")
-    bm_files = ["chrome_Bookmarks", "edge_Bookmarks"] # json格式
-    # * 书签文件转换
-    #   * 定义记录书签内容的数据结构
-    #   * 书签文件结构解析
-    #   * 书签文件结构提取
-    #   * 书签内容提取
-    bm_files = [BookmarkFolder.parse_json(bm_dir / file) for file in bm_files]
-    # * 书签内容合并
-    #   * 确定书签内容的等价性
-    #   * 书签内容的重复项过滤
-    bm_merge = merge(*bm_files)
-    #   * 书签内容保存
-    #     * 书签内容持久化
-    #     * 书签内容缓存
-    output_dir = Path("./output")
-    filename = "merged.json"
-    # * 书签文件还原
-    #   * 书签内容以书签文件结构进行书签文件的构造
-    bm_merge.dump_json(str(output_dir / filename))
+    # bm_dir = Path("./bookmarks")
+    # bm_filenames = ["chrome_Bookmarks", "edge_Bookmarks"] # json格式
+    # # * 书签文件转换
+    # #   * 定义记录书签内容的数据结构
+    # #   * 书签文件结构解析
+    # #   * 书签文件结构提取
+    # #   * 书签内容提取
+    # bmfs = [BookmarkFolder.parse_json(bm_dir / file) for file in bm_filenames]
+    # # * 书签内容合并
+    # #   * 确定书签内容的等价性
+    # #   * 书签内容的重复项过滤
+    # bm_merge = merge(*bmfs)
+    # #   * 书签内容保存
+    # #     * 书签内容持久化
+    # #     * 书签内容缓存
+    # output_dir = Path("./output")
+    # filename = "merged.json"
+    # # * 书签文件还原
+    # #   * 书签内容以书签文件结构进行书签文件的构造
+    # bm_merge.dump_json(str(bm_dir / bm_filenames[0]))
+    """2. 本地文件测试"""
+    chrome_bmf = BookmarkFolder.parse_json(DBPath.CHROME)
+    edge_bmf = BookmarkFolder.parse_json(DBPath.EDGE)
+    merge_bmf = merge(chrome_bmf, edge_bmf)
+    # print(merge_bmf, type(merge_bmf), len(merge_bmf))
+    merge_bmf.dump_json(DBPath.CHROME)
+
 
 
 if __name__ == "__main__":
