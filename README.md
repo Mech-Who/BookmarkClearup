@@ -8,7 +8,7 @@
 
 ## 二、项目结构
 
-![项目UML与可能结构展示](asset/uml_structure.png)
+![项目UML与可能结构展示](asset/uml_structure.excalidraw.png)
 
 核心模块目录：`<项目根目录>/src`
 
