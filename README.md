@@ -8,6 +8,8 @@
 
 ## 二、项目结构
 
+![项目UML与可能结构展示](asset/uml_structure.png)
+
 核心模块目录：`<项目根目录>/src`
 
 - `constant.py`: 包含 windows 格式下 chrome 和 edge 的本地书签文件的默认路径。
