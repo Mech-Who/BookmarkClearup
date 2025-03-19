@@ -40,7 +40,6 @@ BookmarkFolder
 class BookmarkBase(metaclass=LoggerMeta):
     """
     提供书签目录的支持。为后续保留书签的目录结构做准备。
-    TODO：考虑具体实现细节
     """
     count_n = 1
     def __init__(self, *,
