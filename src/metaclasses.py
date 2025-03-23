@@ -1,6 +1,7 @@
 import time
 import logging
 
+
 class LoggerMeta(type):
     def __new__(cls, name, bases, attrs):
         new_class = super().__new__(cls, name, bases, attrs)

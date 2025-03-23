@@ -59,8 +59,9 @@ def deduplication(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkPa
     """
     实现两个 BookmarkFolder 对象间的去重。
     """
-    bmf1 = set([item for item in visit(bmf1)])
-    bmf2 = set([item for item in visit(bmf2)])
+    # LEARN: set 的参数是一个 Iterator 即可
+    bmf1 = set(visit(bmf1))
+    bmf2 = set(visit(bmf2))
     return list(bmf2 - bmf1)
 
 
@@ -95,7 +96,7 @@ def merge(*bmfs: Tuple["BookmarkFolder"]) -> "BookmarkFolder":
     return res
 
 
-def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> NoReturn:
+def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> None:
     '''
     description: 向 BookmarkFolder 对象中添加 BookmarkPage (书签)
     param {*} bmf 要添加书签的 BookmarkFolder 对象
@@ -111,7 +112,7 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> NoReturn:
     paths = paths[:-1]
     paths.reverse()
     print(f"paths: {paths}")
-    # 查找现有书签
+    # 查找现有目录
     root_bmf = bmf
     for idx, path in enumerate(paths):
         # 找到存在的目录
@@ -141,14 +142,14 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> NoReturn:
     print(f"{'='*10}[Insert finished]{'='*10}")
 
 
-def dump_html(bmf: "BookmarkFolder", save_name: Path|str) -> NoReturn:
+def dump_html(bmf: "BookmarkFolder", save_name: Path|str) -> None:
     """
     TODO: 将书签记录转换回书签文件(*.html)
     """
     raise NotImplementedError("src.functional.dump_html 尚未实现！")
 
 
-def dump_json_folder(bmf: "BookmarkFolder") -> NoReturn:
+def dump_json_folder(bmf: "BookmarkFolder") -> None:
     from src.entity import BookmarkFolder, BookmarkPage
     # print(bmf.values)
     # print(f"bmf: {type(bmf)}", dir(bmf))
@@ -175,7 +176,7 @@ def dump_json_folder(bmf: "BookmarkFolder") -> NoReturn:
     return bmf_dict
 
 
-def dump_json_page(bmp: "BookmarkPage") -> NoReturn:
+def dump_json_page(bmp: "BookmarkPage") -> None:
     bmp_dict = {
         "date_added": bmp.date_added,
         "date_last_used": bmp.date_last_used,
@@ -192,7 +193,7 @@ def dump_json_page(bmp: "BookmarkPage") -> NoReturn:
     return bmp_dict
 
 
-def dump_json(bmf: "BookmarkFolder", save_path: Path|str) -> NoReturn:
+def dump_json(bmf: "BookmarkFolder", save_path: Path|str) -> None:
     """
     将书签记录转换回书签文件(Bookmarks, 即json格式文件)
     """
@@ -201,7 +202,7 @@ def dump_json(bmf: "BookmarkFolder", save_path: Path|str) -> NoReturn:
         json.dump(bmf_dict, f, indent = 4)
 
 
-def visit(bmf: "BookmarkFolder") -> Generator:
+def visit(bmf: "BookmarkFolder") -> Generator["BookmarkPage"]:
     """
     实现一个for循环遍历所有标签
     语法: yield + yield from

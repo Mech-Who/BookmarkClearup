@@ -46,7 +46,7 @@ class BookmarkBase(metaclass=LoggerMeta):
                  date_added: str=str(int(time.time())),
                  date_last_used: str=str(int(time.time())),
                  guid: str=str(uuid.uuid4()),
-                 id: str=count_n,
+                 id: int=count_n,
                  name: str="Unknown",
                  source: str="unknown source",
                  type: str="folder",
@@ -71,7 +71,7 @@ class BookmarkBase(metaclass=LoggerMeta):
     def __hash__(self):
         return hash(self.path)
 
-
+# HACK: 尝试使用 TypedDict，对字典类型做检查
 class BookmarkPage(BookmarkBase):
     def __init__(self, *,
                  url: str,
@@ -155,22 +155,22 @@ class BookmarkFolder(BookmarkBase):
         #     else:
         #         raise TypeError(f"Unknown child type: {type(item)}")
 
-    def append(self, base: BookmarkBase) -> NoReturn:
+    def append(self, base: BookmarkBase) -> None:
         self.children.append(base)
         self.log.info(f"Add '{base}' as a child.")
 
-    def remove(self, base: BookmarkBase) -> NoReturn:
+    def remove(self, base: BookmarkBase) -> None:
         self.children.remove(base)
         self.log.info(f"Remove '{base}' from children.")
 
-    def insert(self, bmp: BookmarkPage) -> NoReturn:
+    def insert(self, bmp: BookmarkPage) -> None:
         insert(self, bmp)
 
     def dump_html(self, save_name: Path|str):
         """将书签记录转换回书签文件(*.html)"""
         dump_html(self, save_name)
 
-    def dump_json(self, save_path: Path|str=DBPath.CHROME) -> NoReturn:
+    def dump_json(self, save_path: Path|str=DBPath.CHROME) -> None:
         """将书签记录转换回书签文件(*.json)"""
         if not isinstance(save_path, Path):
             save_path = Path(save_path)
@@ -226,6 +226,10 @@ class BookmarkFolder(BookmarkBase):
         """
         if not isinstance(bm_filename, Path):
             bm_filename = Path(bm_filename)
+        # FIXME: 通过内容检查、类型检查增强健壮性
+        if(not bm_filename.isfile()):
+            raise FileNotFoundError("")
+        # HACK: 尝试 object_hook 参数使用
         with open(bm_filename, "r", encoding="utf-8") as f:
             bmf_json = json.load(f)
         return parse_json_item(bmf_json["roots"]["bookmark_bar"])

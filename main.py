@@ -23,7 +23,7 @@ from src.constant import DefaultBookmarkPath as DBPath
 logger = logging.getLogger(__name__)
 
 
-def setup_log(log_filename: str=None) -> NoReturn:
+def setup_log(log_filename: str=None) -> None:
     """
     description: 配置日志设置
     param log_filename {str}: 日志文件名，自动添加后缀'.log'，默认为'日期_时间'，例如'20250315_122000'
