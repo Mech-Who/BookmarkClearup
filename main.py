@@ -1,29 +1,27 @@
-'''
+"""
 Author: HuShuhan 873933169@qq.com
 Date: 2025-03-14 16:59:32
 LastEditors: hushuhan 873933169@qq.com
 LastEditTime: 2025-03-17 19:42:56
 FilePath: \BookmarkClearup\main.py
 Description: 参考自：https://blog.csdn.net/geoker/article/details/131030675，目标是合并不同浏览器的书签，并且不需要太多手动操作。
-'''
-# standard library
-import sys
-import logging
-from typing import *
-from pathlib import Path
-from datetime import datetime
-# third-party
-from lxml import etree
-# user custom
-from src.entity import BookmarkPage, BookmarkFolder
-from src.functional import merge
-from src.constant import DefaultBookmarkPath as DBPath
+"""
 
+# standard library
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# user custom
+from src.constant import DefaultBookmarkPath as DBPath
+from src.entity import BookmarkFolder
+from src.functional import merge
 
 logger = logging.getLogger(__name__)
 
 
-def setup_log(log_filename: str=None) -> None:
+def setup_log(log_filename: str = None) -> None:
     """
     description: 配置日志设置
     param log_filename {str}: 日志文件名，自动添加后缀'.log'，默认为'日期_时间'，例如'20250315_122000'
@@ -33,11 +31,13 @@ def setup_log(log_filename: str=None) -> None:
     if log_filename is None:
         log_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = Path(f"./logs/{log_filename}.log")
-    logging.basicConfig(level=logging.DEBUG,
-                        handlers=[
-                            logging.FileHandler(filename=str(log_path)),
-                            logging.StreamHandler(stream=sys.stdout)
-                        ])
+    logging.basicConfig(
+        level=logging.DEBUG,
+        handlers=[
+            logging.FileHandler(filename=str(log_path)),
+            logging.StreamHandler(stream=sys.stdout),
+        ],
+    )
 
 
 def main():
@@ -71,7 +71,6 @@ def main():
     merge_bmf = merge(chrome_bmf, edge_bmf)
     # print(merge_bmf, type(merge_bmf), len(merge_bmf))
     merge_bmf.dump_json(DBPath.CHROME)
-
 
 
 if __name__ == "__main__":
