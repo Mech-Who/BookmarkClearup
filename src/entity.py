@@ -52,10 +52,10 @@ class BookmarkBase(metaclass=LoggerMeta):
     def __init__(
         self,
         *,
-        date_added: str = str(int(time.time())),
-        date_last_used: str = str(int(time.time())),
-        guid: str = str(uuid.uuid4()),
-        id: int = count_n,
+        date_added: str = None,
+        date_last_used: str = None,
+        guid: str = None,
+        id: int | str = None,
         name: str = "Unknown",
         source: str = "unknown source",
         type: str = "folder",
@@ -63,15 +63,16 @@ class BookmarkBase(metaclass=LoggerMeta):
         parent: "BookmarkBase" = None,
         path: Path = Path("/"),
     ):
-        if id:
+        if id is not None:
+            self.id = id
+            if isinstance(id, int) and id >= BookmarkBase.count_n:
+                BookmarkBase.count_n = id + 1
+        else:
             self.id = BookmarkBase.count_n
             BookmarkBase.count_n += 1
-        else:
-            self.id = id
-            BookmarkBase.count_n = id + 1
-        self.date_added = date_added
-        self.date_last_used = date_last_used
-        self.guid = guid
+        self.date_added = date_added if date_added is not None else str(int(time.time()))
+        self.date_last_used = date_last_used if date_last_used is not None else str(int(time.time()))
+        self.guid = guid if guid is not None else str(uuid.uuid4())
         self.name = name
         self.source = source
         self.type = type
@@ -88,14 +89,14 @@ class BookmarkPage(BookmarkBase):
         self,
         *,
         url: str,
-        meta_info: dict = {"power_bookmark_meta": ""},
+        meta_info: dict = None,
         visit_count: int = 0,
         show_icon: bool = False,
         **kw_args: dict,
     ):
         super().__init__(**kw_args)
         self.url = url
-        self.meta_info = meta_info
+        self.meta_info = meta_info if meta_info is not None else {"power_bookmark_meta": ""}
         self.visit_count = visit_count
         self.show_icon = show_icon
 
@@ -103,6 +104,8 @@ class BookmarkPage(BookmarkBase):
         return hash(self.url)
 
     def __eq__(self, page: "BookmarkPage"):
+        if not isinstance(page, BookmarkPage):
+            return NotImplemented
         return page.url == self.url
 
     def __str__(self):
@@ -116,14 +119,14 @@ class BookmarkFolder(BookmarkBase):
     def __init__(
         self,
         *,
-        children: Sequence[BookmarkPage] = [],
-        date_modified: str = str(int(time.time())),
+        children: Sequence[BookmarkPage] = None,
+        date_modified: str = None,
         **kw_args: dict,
     ):
         self.log.debug(f"other parameter{kw_args}")
         super().__init__(**kw_args)
-        self.children = list(children)
-        self.date_modified = date_modified
+        self.children = list(children) if children is not None else []
+        self.date_modified = date_modified if date_modified is not None else str(int(time.time()))
 
     def __str__(self):
         return self.to_str()
@@ -269,6 +272,8 @@ class BookmarkIterator(metaclass=LoggerMeta):
         return self
 
     def __next__(self):
+        if self.idx >= len(self.bm):
+            raise StopIteration
         res = self.bm[self.idx]
         self.idx += 1
         return res

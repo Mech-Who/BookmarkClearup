@@ -2,6 +2,7 @@
 import json
 import time
 import uuid
+from copy import copy, deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Generator, Tuple
 
@@ -19,8 +20,8 @@ def parse_json_folder(json: dict) -> "BookmarkFolder":
 
     children = json["children"]
     date_modified = json["date_modified"]
-    json = {k: v for k, v in json.items() if k not in ["children", "date_modified"]}
-    folder = BookmarkFolder(date_modified=date_modified, **json)
+    folder_data = {k: v for k, v in json.items() if k not in ["children", "date_modified"]}
+    folder = BookmarkFolder(date_modified=date_modified, **folder_data)
     children_list = []
     for item in children:
         children_list.append(parse_json_item(item, parent=folder))
@@ -42,18 +43,19 @@ def parse_json_item(bmf_json: dict, parent: "BookmarkBase" = None) -> "BookmarkF
     将 json 格式的书签信息转化为 BookmarkFolder 对象
     原理：递归解析
     """
-    bmf_json["parent"] = parent
-    bmf_json["path"] = (
-        parent.path / bmf_json["name"].strip() if parent is not None else Path("/")
+    item_data = dict(bmf_json)
+    item_data["parent"] = parent
+    item_data["path"] = (
+        parent.path / item_data["name"].strip() if parent is not None else Path("/")
     )
     # print(bmf_json)
-    match bmf_json["type"]:
+    match item_data["type"]:
         case "folder":
-            return parse_json_folder(bmf_json)
+            return parse_json_folder(item_data)
         case "url":
-            return parse_json_page(bmf_json)
+            return parse_json_page(item_data)
         case _:
-            TypeError(f"Unknown type of data: {bmf_json['type']}")
+            raise ValueError(f"Unknown bookmark type: {item_data['type']}")
 
 
 def deduplication(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkPage":
@@ -61,29 +63,28 @@ def deduplication(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkPa
     实现两个 BookmarkFolder 对象间的去重。
     """
     # LEARN: set 的参数是一个 Iterator 即可
-    bmf1 = set(visit(bmf1))
-    bmf2 = set(visit(bmf2))
-    return list(bmf2 - bmf1)
+    base_urls = {page.url for page in visit(bmf1)}
+    seen_urls = set(base_urls)
+    result = []
+    for page in visit(bmf2):
+        if page.url not in seen_urls:
+            result.append(page)
+            seen_urls.add(page.url)
+    return result
+
+
+def copy_page(page: "BookmarkPage") -> "BookmarkPage":
+    """复制页面本身及其可变元数据，不复制来源树的 parent。"""
+    result = copy(page)
+    result.meta_info = deepcopy(page.meta_info)
+    return result
 
 
 def merge_two(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkFolder":
     """
     实现两个 BookmarkFolder 对象的合并
     """
-    # 去重
-    bmps = deduplication(bmf1, bmf2)
-    # 插入新书签
-    ## 没有新书签
-    if len(bmps) == 0:
-        return bmf1
-    print(f"new bookmars count: {len(bmps)}")
-    from pprint import pprint
-
-    pprint(bmps)
-    ## 有新书签
-    for bmp in bmps:
-        bmf1.insert(bmp)
-    return bmf1
+    return merge(bmf1, bmf2)
 
 
 def merge(*bmfs: Tuple["BookmarkFolder"]) -> "BookmarkFolder":
@@ -91,9 +92,15 @@ def merge(*bmfs: Tuple["BookmarkFolder"]) -> "BookmarkFolder":
     实现多个BookmarkFolder的合并。
     基于merge_two，实现多个书签文件的合并。
     """
-    res = bmfs[0]
-    for i in range(1, len(bmfs)):
-        res = merge_two(res, bmfs[i])
+    if not bmfs:
+        raise ValueError("merge requires at least one bookmark tree")
+    # 1. 深拷贝基准树，保证调用方输入始终不变。
+    # 2. 按后续树的遍历顺序追加精确 URL 尚未出现的页面。
+    res = deepcopy(bmfs[0])
+    for source in bmfs[1:]:
+        for page in deduplication(res, source):
+            new_page = copy_page(page)
+            res.insert(new_page)
     return res
 
 
