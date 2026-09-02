@@ -207,7 +207,7 @@ def dump_json(bmf: "BookmarkFolder", save_path: Path | str) -> None:
         json.dump(bmf_dict, f, indent=4)
 
 
-def visit(bmf: "BookmarkFolder") -> Generator["BookmarkPage"]:
+def visit(bmf: "BookmarkFolder") -> Generator["BookmarkPage", None, None]:
     """
     实现一个for循环遍历所有标签
     语法: yield + yield from
