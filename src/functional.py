@@ -58,20 +58,65 @@ def parse_json_item(bmf_json: dict, parent: "BookmarkBase" = None) -> "BookmarkF
             raise ValueError(f"Unknown bookmark type: {item_data['type']}")
 
 
-def deduplication(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkPage":
-    """
-    实现两个 BookmarkFolder 对象间的去重。
-    """
-    # LEARN: set 的参数是一个 Iterator 即可
-    base_urls = {page.url for page in visit(bmf1)}
-    seen_urls = set(base_urls)
-    result = []
-    for page in visit(bmf2):
-        if page.url not in seen_urls:
-            result.append(page)
-            seen_urls.add(page.url)
+def _page_key(page: "BookmarkPage") -> tuple[str, str]:
+    """以所在目录路径和精确 URL 标识书签。"""
+    return str(page.path.parent), page.url
+
+
+def _time_value(value) -> int:
+    """将可转整数的时间转换为排序值，非法值按 0。"""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _newer_key(page: "BookmarkPage") -> tuple[int, int]:
+    return _time_value(page.date_last_used), _time_value(page.date_added)
+
+
+def _copy_for_parent(page: "BookmarkPage", parent: "BookmarkFolder") -> "BookmarkPage":
+    result = copy_page(page)
+    result.parent = parent
+    result.path = parent.path / result.name
     return result
 
+
+def _coalesce_folder(folder: "BookmarkFolder") -> None:
+    """在每个目录内收敛重复 URL，并保留较新记录。"""
+    # 1. 递归处理子目录，保持目录和页面的原始顺序。
+    # 2. 仅在同一父目录中按 URL 合并页面。
+    positions = {}
+    children = []
+    for child in folder.children:
+        from src.entity import BookmarkFolder as Folder
+        if isinstance(child, Folder):
+            _coalesce_folder(child)
+            children.append(child)
+            continue
+        key = child.url
+        if key not in positions:
+            positions[key] = len(children)
+            children.append(child)
+        elif _newer_key(child) > _newer_key(children[positions[key]]):
+            children[positions[key]] = _copy_for_parent(child, folder)
+    folder.children = children
+
+def deduplication(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> list["BookmarkPage"]:
+    """返回来源中不在基准同目录的 URL，并按来源顺序保留较新记录。"""
+    seen = {_page_key(page): page for page in visit(bmf1)}
+    positions = {}
+    result = []
+    for page in visit(bmf2):
+        key = _page_key(page)
+        if key not in seen:
+            seen[key] = page
+            positions[key] = len(result)
+            result.append(page)
+        elif key in positions and _newer_key(page) > _newer_key(seen[key]):
+            seen[key] = page
+            result[positions[key]] = page
+    return result
 
 def copy_page(page: "BookmarkPage") -> "BookmarkPage":
     """复制页面本身及其可变元数据，不复制来源树的 parent。"""
@@ -81,28 +126,33 @@ def copy_page(page: "BookmarkPage") -> "BookmarkPage":
 
 
 def merge_two(bmf1: "BookmarkFolder", bmf2: "BookmarkFolder") -> "BookmarkFolder":
-    """
-    实现两个 BookmarkFolder 对象的合并
-    """
+    """合并两个书签树并返回独立结果。"""
     return merge(bmf1, bmf2)
 
 
 def merge(*bmfs: Tuple["BookmarkFolder"]) -> "BookmarkFolder":
-    """
-    实现多个BookmarkFolder的合并。
-    基于merge_two，实现多个书签文件的合并。
-    """
+    """合并书签，按目录路径和 URL 去重，并以较新记录替换冲突。"""
     if not bmfs:
         raise ValueError("merge requires at least one bookmark tree")
-    # 1. 深拷贝基准树，保证调用方输入始终不变。
-    # 2. 按后续树的遍历顺序追加精确 URL 尚未出现的页面。
+    # 1. 复制并收敛基准树自身的目录内冲突。
+    # 2. 依次处理来源，保持新增顺序并替换较旧记录。
     res = deepcopy(bmfs[0])
+    _coalesce_folder(res)
+    index = {_page_key(page): page for page in visit(res)}
     for source in bmfs[1:]:
-        for page in deduplication(res, source):
-            new_page = copy_page(page)
-            res.insert(new_page)
+        for page in visit(source):
+            key = _page_key(page)
+            current = index.get(key)
+            if current is None:
+                new_page = copy_page(page)
+                res.insert(new_page)
+                index[key] = new_page
+            elif _newer_key(page) > _newer_key(current):
+                replacement = _copy_for_parent(page, current.parent)
+                children = current.parent.children
+                children[children.index(current)] = replacement
+                index[key] = replacement
     return res
-
 
 def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> None:
     """

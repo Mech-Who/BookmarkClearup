@@ -83,3 +83,14 @@ Copy-Item .\base.json.20260902_120000_123456.bak .\base.json -Force
 ```
 
 `--strategy` 当前仅支持 `exact-url`；可用 `--log-level DEBUG|INFO|WARNING|ERROR` 调整日志级别。日志自动写入 `logs/bookmarkclearup.log`。
+
+原地覆盖必须显式确认：交互时输入 `yes`，或自动化时同时传入 `--in-place --yes`；未确认会取消写入。每次覆盖只创建一个备份，历史备份不会自动清理。
+
+备份清理默认只列出匹配文件，不删除任何内容。按时间范围预览或确认删除：
+
+```powershell
+uv run python main.py --clean-backups .\backups --start 20260901_000000 --end 20260930_235959
+uv run python main.py --clean-backups .\backups --start 20260901_000000 --end 20260930_235959 --yes
+```
+
+清理只匹配本工具生成的 `原文件名.YYYYMMDD_HHMMSS_bookmark_backup[_序号].bak` 文件。

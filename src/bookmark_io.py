@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import tempfile
 from copy import deepcopy
@@ -44,17 +45,18 @@ def document_with_root(document: dict, root: BookmarkFolder) -> dict:
 
 
 def _backup_path(path: Path) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    candidate = path.with_name(f"{path.name}.{stamp}.bak")
+    """生成同目录且不会覆盖历史文件的备份路径。"""
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    candidate = path.with_name(f"{path.name}.{stamp}_bookmark_backup.bak")
     suffix = 1
     while candidate.exists():
-        candidate = path.with_name(f"{path.name}.{stamp}_{suffix}.bak")
+        candidate = path.with_name(f"{path.name}.{stamp}_bookmark_backup_{suffix}.bak")
         suffix += 1
     return candidate
 
 
-def _atomic_write(path: Path, document: dict) -> None:
-    """以同目录临时文件完成 flush、fsync、校验后原子替换。"""
+def _atomic_write(path: Path, document: dict, *, replace: bool = True) -> None:
+    """以同目录临时文件完成 flush、fsync、校验后原子提交。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=".bookmarkclearup-", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
@@ -63,8 +65,14 @@ def _atomic_write(path: Path, document: dict) -> None:
             json.dump(document, stream, ensure_ascii=False, indent=4)
             stream.flush()
             os.fsync(stream.fileno())
+        # 1. 重新解析临时文件，确认内容仍是合法书签文档。
         load_bookmark_file(temporary)
-        os.replace(temporary, path)
+        # 2. 新文件使用 link，目标存在时原子失败；原地覆盖使用 replace。
+        if replace:
+            os.replace(temporary, path)
+        else:
+            os.link(temporary, path)
+            temporary.unlink()
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
@@ -85,5 +93,40 @@ def write_bookmark_file(path: Path | str, document: dict, *, output: bool = Fals
             raise FileNotFoundError(f"bookmark file does not exist: {path}")
         backup = _backup_path(path)
         shutil.copy2(path, backup)
-    _atomic_write(path, document)
+    _atomic_write(path, document, replace=not output)
     return path, backup
+
+_BACKUP_RE = re.compile(r"^.+\.\d{8}_\d{6}_bookmark_backup(?:_\d+)?\.bak$")
+
+
+def list_backups(directory: Path | str, start: datetime | None = None, end: datetime | None = None) -> list[Path]:
+    """列出目录中符合本工具命名规则且在时间范围内的备份。"""
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise NotADirectoryError(f"backup directory does not exist: {directory}")
+    result = []
+    for path in directory.iterdir():
+        if not path.is_file() or not _BACKUP_RE.match(path.name):
+            continue
+        match = re.search(r"\.(\d{8}_\d{6})_bookmark_backup", path.name)
+        if match is None:
+            continue
+        try:
+            stamp = datetime.strptime(match.group(1), "%Y%m%d_%H%M%S")
+        except ValueError:
+            continue
+        if start is not None and stamp < start:
+            continue
+        if end is not None and stamp > end:
+            continue
+        result.append(path)
+    return sorted(result)
+
+
+def clean_backups(directory: Path | str, *, start: datetime | None = None, end: datetime | None = None, dry_run: bool = True, confirm: bool = False) -> list[Path]:
+    """按时间范围清理本工具备份；默认 dry-run，删除必须显式确认。"""
+    backups = list_backups(directory, start, end)
+    if not dry_run and confirm:
+        for path in backups:
+            path.unlink()
+    return backups

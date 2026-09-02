@@ -49,7 +49,7 @@ def test_duplicate_urls_are_skipped_but_base_tree_is_preserved():
     base = parse_json_item(_folder("Bookmarks", [_folder("Keep", [_page("Old", "https://same.example")])]))
     later = parse_json_item(_folder("Bookmarks", [_page("Same", "https://same.example")]))
     merged = merge(base, later)
-    assert [page.name for page in visit(merged)] == ["Old"]
+    assert [page.name for page in visit(merged)] == ["Old", "Same"]
     assert merged.children[0].name == "Keep"
 
 
@@ -78,3 +78,49 @@ def test_same_named_directories_are_reused_when_inserting():
     merged = merge(base, source)
     assert [child.name for child in merged.children] == ["Work"]
     assert [page.url for page in visit(merged.children[0])] == ["https://a.example"]
+
+def test_same_url_in_different_directories_is_preserved():
+    base = parse_json_item(_folder("Bookmarks", [_folder("Work", [_page("Work", "https://same.example")])]))
+    source = parse_json_item(_folder("Bookmarks", [_folder("Personal", [_page("Personal", "https://same.example")])]))
+    assert [page.url for page in visit(merge(base, source))] == ["https://same.example", "https://same.example"]
+
+
+def test_same_directory_newer_source_replaces_page_metadata():
+    old = _page("Old", "https://same.example")
+    old["date_last_used"] = "10"
+    old["meta_info"] = {"version": "old"}
+    new = _page("New", "https://same.example")
+    new["date_last_used"] = "11"
+    new["meta_info"] = {"version": "new"}
+    base = parse_json_item(_folder("Bookmarks", [_folder("Work", [old])]))
+    source = parse_json_item(_folder("Bookmarks", [_folder("Work", [new])]))
+    result = merge(base, source)
+    page = next(visit(result))
+    assert page.name == "New" and page.meta_info == {"version": "new"}
+    assert page.parent is result.children[0] and page.path == page.parent.path / page.name
+    assert next(visit(base)).name == "Old" and next(visit(source)).name == "New"
+
+
+def test_invalid_timestamps_are_zero_and_do_not_replace_valid_page():
+    old = _page("Old", "https://same.example"); old["date_last_used"] = "2"
+    new = _page("Invalid", "https://same.example"); new["date_last_used"] = "not-a-time"; new["date_added"] = "also-invalid"
+    base = parse_json_item(_folder("Bookmarks", [old]))
+    source = parse_json_item(_folder("Bookmarks", [new]))
+    assert next(visit(merge(base, source))).name == "Old"
+
+def test_base_tree_duplicates_are_coalesced_to_newest_stably():
+    first = _page("First", "https://same.example"); first["date_last_used"] = "2"
+    second = _page("Second", "https://same.example"); second["date_last_used"] = "3"
+    base = parse_json_item(_folder("Bookmarks", [first, second]))
+    result = merge(base)
+    pages = list(visit(result))
+    assert [page.name for page in pages] == ["Second"]
+    assert pages[0].parent is result and pages[0].path == result.path / pages[0].name
+
+
+def test_base_nested_duplicate_and_invalid_time_are_coalesced():
+    old = _page("Old", "https://nested.example"); old["date_last_used"] = "bad"; old["date_added"] = "bad"
+    new = _page("New", "https://nested.example"); new["date_last_used"] = "1"
+    base = parse_json_item(_folder("Bookmarks", [_folder("Nested", [old, new])]))
+    pages = list(visit(merge(base)))
+    assert [page.name for page in pages] == ["New"]
