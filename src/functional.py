@@ -198,10 +198,9 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> None:
 
 
 def dump_html(bmf: "BookmarkFolder", save_name: Path | str) -> None:
-    """
-    TODO: 将书签记录转换回书签文件(*.html)
-    """
-    raise NotImplementedError("src.functional.dump_html 尚未实现！")
+    """将书签记录转换回 Netscape Bookmark HTML 文件。"""
+    from src.html_io import dump_html as _dump_html
+    _dump_html(bmf, save_name)
 
 
 def dump_json_folder(bmf: "BookmarkFolder") -> None:

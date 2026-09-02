@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from src.entity import BookmarkFolder
+from src.safe_file import atomic_write
 from src.functional import dump_json_folder, merge, parse_json_item
 
 SUPPORTED_ROOTS = ("bookmark_bar", "other", "synced")
@@ -67,57 +68,14 @@ def output_documents(inputs: list[tuple[dict, dict[str, BookmarkFolder]]], merge
             roots[name] = dump_json_folder(root)
         results.append(result)
     return results
-def _backup_path(path: Path) -> Path:
-    """生成同目录且不会覆盖历史文件的备份路径。"""
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    candidate = path.with_name(f"{path.name}.{stamp}_bookmark_backup.bak")
-    suffix = 1
-    while candidate.exists():
-        candidate = path.with_name(f"{path.name}.{stamp}_bookmark_backup_{suffix}.bak")
-        suffix += 1
-    return candidate
-
-
-def _atomic_write(path: Path, document: dict, *, replace: bool = True) -> None:
-    """以同目录临时文件完成 flush、fsync、校验后原子提交。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(prefix=".bookmarkclearup-", suffix=".tmp", dir=path.parent)
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(document, stream, ensure_ascii=False, indent=4)
-            stream.flush()
-            os.fsync(stream.fileno())
-        # 1. 重新解析临时文件，确认内容仍是合法书签文档。
-        load_chromium_file(temporary)
-        # 2. 新文件使用 link，目标存在时原子失败；原地覆盖使用 replace。
-        if replace:
-            os.replace(temporary, path)
-        else:
-            os.link(temporary, path)
-            temporary.unlink()
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
-def write_bookmark_file(path: Path | str, document: dict, *, output: bool = False, in_place: bool = False) -> tuple[Path, Path | None]:
-    """安全写入新文件或显式原地覆盖，返回目标和备份路径。"""
-    path = Path(path)
-    if output and in_place:
-        raise ValueError("output and in_place are mutually exclusive")
-    if output and path.exists():
-        raise FileExistsError(f"output file already exists: {path}")
-    if not output and not in_place:
-        raise ValueError("one of output or in_place is required")
-    backup = None
-    if in_place:
-        if not path.is_file():
-            raise FileNotFoundError(f"bookmark file does not exist: {path}")
-        backup = _backup_path(path)
-        shutil.copy2(path, backup)
-    _atomic_write(path, document, replace=not output)
-    return path, backup
+def write_bookmark_file(path: Path | str, document: dict, *, output: bool = False, in_place: bool = False, confirm: bool = False) -> tuple[Path, Path | None]:
+    """Safely write JSON using the shared atomic writer."""
+    target = Path(path)
+    def validate(candidate: Path) -> None:
+        load_chromium_file(candidate)
+    data = json.dumps(document, ensure_ascii=False, indent=4)
+    backup = atomic_write(target, data, validate, output=output, in_place=in_place, confirm=confirm)
+    return target, backup
 
 _BACKUP_RE = re.compile(r"^.+\.\d{8}_\d{6}_bookmark_backup(?:_\d+)?\.bak$")
 

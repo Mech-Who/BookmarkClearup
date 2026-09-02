@@ -115,3 +115,8 @@ uv run python main.py --base-browser chrome --base-profile Default --source-brow
 `--output-dir` 为每个输入生成独立结果（如 `base_merged.json`、`source_1_merged.json`），目标存在时拒绝覆盖；默认仍是 dry-run。`--output` 只生成基准外壳的单一结果，`--in-place` 只允许安全覆盖基准文件并要求确认，不会同时原地覆盖多个浏览器。
 
 阶段 3 的自动化测试仅验证脱敏 Chrome-like/Edge-like 结构的往返。真实 Chrome/Edge 打开、同步和再次保存涉及用户账号及真实配置，属于发布前人工门禁，本阶段尚未执行。
+## HTML 工作流与跨平台路径
+
+Netscape Bookmark HTML 使用 UTF-8 读写，保留 H1/TITLE 根名、目录层级、标题、URL、ADD_DATE 与 LAST_MODIFIED。HTML 时间为 Unix 秒，内部统一转换为 Chromium WebKit 微秒；不理解的扩展属性不写回。HTML 无 Chromium 多根概念，统一映射为 `bookmark_bar`；JSON 的 `other`、`synced` 根仍独立合并。CLI 会按 `.json`、`.html`、`.htm` 自动识别，亦可用 `--output-format html` 导出。默认 dry-run，输出文件拒绝覆盖，原地写回需显式确认并创建时间命名备份。
+
+Chrome/Edge 路径支持 Windows、macOS、Linux。Firefox 当前仅评估格式，未实现适配。发布前仍需使用隔离配置人工验证真实浏览器打开、同步及再次保存。

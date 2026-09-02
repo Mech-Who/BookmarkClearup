@@ -8,10 +8,8 @@ from pathlib import Path
 from typing import Sequence
 
 # third-party
-from lxml import etree
-
 from src.constant import DefaultBookmarkPath as DBPath
-from src.functional import dump_html, dump_json_folder, insert, merge, parse_json_item
+from src.functional import dump_json_folder, insert, merge, parse_json_item
 
 # user custom
 from src.metaclasses import LoggerMeta
@@ -193,6 +191,7 @@ class BookmarkFolder(BookmarkBase):
 
     def dump_html(self, save_name: Path | str):
         """将书签记录转换回书签文件(*.html)"""
+        from src.html_io import dump_html
         dump_html(self, save_name)
 
     def dump_json(self, save_path: Path | str = DBPath.CHROME) -> None:
@@ -233,18 +232,8 @@ class BookmarkFolder(BookmarkBase):
         """
         从 html 文件转换得到 BookmarkFolder
         """
-        if isinstance(bm_filename, str):
-            bm_filename = Path(bm_filename)
-        # 解析html格式
-        with open(bm_filename, "r", encoding="utf-8") as f:
-            contents = f.read()
-        tree = etree.HTML(contents)
-        # 找到所有的书签链接
-        links = tree.xpath("//a")
-        links = [each for each in links]
-        links.sort(key=lambda x: x.attrib["href"])
-        x = tuple(BookmarkPage(link.text, link.attrib["href"]) for link in links)
-        return BookmarkFolder(x)
+        from src.html_io import parse_html
+        return parse_html(bm_filename)
 
     @staticmethod
     def parse_json(bm_filename: str | Path = DBPath.CHROME):

@@ -88,8 +88,8 @@ def test_in_place_writes_unique_backup(repo_temp_dir):
     _write(source, _document("https://new.example"))
     original = base.read_bytes()
 
-    _, first_backup = write_bookmark_file(base, _document("https://changed.example"), in_place=True)
-    _, second_backup = write_bookmark_file(base, _document("https://changed-again.example"), in_place=True)
+    _, first_backup = write_bookmark_file(base, _document("https://changed.example"), in_place=True, confirm=True)
+    _, second_backup = write_bookmark_file(base, _document("https://changed-again.example"), in_place=True, confirm=True)
     assert first_backup != second_backup
     assert Path(first_backup).read_bytes() == original
     assert Path(second_backup).read_bytes() != Path(first_backup).read_bytes()
@@ -108,7 +108,7 @@ def test_atomic_write_failure_preserves_original(repo_temp_dir, monkeypatch):
 
     monkeypatch.setattr(bookmark_io.os, "replace", fail_replace)
     with pytest.raises(OSError, match="simulated"):
-        write_bookmark_file(target, document, in_place=True)
+        write_bookmark_file(target, document, in_place=True, confirm=True)
     assert target.read_bytes() == original
     assert not list(repo_temp_dir.glob(".bookmarkclearup-*.tmp"))
 
@@ -139,10 +139,46 @@ def test_yes_allows_in_place_and_uses_named_backup(repo_temp_dir):
     assert len(backups) == 1
 
 
+def test_backup_race_preserves_external_same_name(repo_temp_dir, monkeypatch):
+    import src.safe_file as safe_file
+    target = repo_temp_dir / "base.json"
+    original = b"original"
+    target.write_bytes(original)
+    real_link = safe_file.os.link
+    calls = []
+
+    def race_link(source, destination):
+        calls.append(destination)
+        if len(calls) == 1:
+            Path(destination).write_bytes(b"external-owner")
+            raise FileExistsError("raced backup")
+        return real_link(source, destination)
+
+    monkeypatch.setattr(safe_file.os, "link", race_link)
+    backup = safe_file.backup_path(target)
+    assert Path(calls[0]).read_bytes() == b"external-owner"
+    assert backup == Path(calls[1])
+    assert backup.read_bytes() == original
+
+
+def test_atomic_cleanup_warning_keeps_validator_error(repo_temp_dir, monkeypatch, caplog):
+    import src.safe_file as safe_file
+    target = repo_temp_dir / "result.json"
+    real_unlink = Path.unlink
+
+    def cleanup_fail(path, *args, **kwargs):
+        if path.name.startswith(".bookmarkclearup-"):
+            raise OSError("cleanup failure")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", cleanup_fail)
+    with pytest.raises(ValueError, match="invalid content"):
+        safe_file.atomic_write(target, "bad", lambda _: (_ for _ in ()).throw(ValueError("invalid content")), output=True, in_place=False)
+    assert "cleanup failure" in caplog.text
 def test_backup_cleanup_is_dry_run_until_confirmed(repo_temp_dir):
     from src.bookmark_io import clean_backups, list_backups
     base = repo_temp_dir / "base.json"; _write(base, _document("https://base.example"))
-    write_bookmark_file(base, _document("https://changed.example"), in_place=True)
+    write_bookmark_file(base, _document("https://changed.example"), in_place=True, confirm=True)
     backups = list_backups(repo_temp_dir)
     assert len(backups) == 1
     assert clean_backups(repo_temp_dir, dry_run=True) == backups
@@ -153,7 +189,7 @@ def test_backup_cleanup_is_dry_run_until_confirmed(repo_temp_dir):
 def test_cli_backup_cleanup_lists_then_deletes_with_yes(repo_temp_dir, capsys):
     from src.bookmark_io import list_backups
     base = repo_temp_dir / "base.json"; _write(base, _document("https://base.example"))
-    write_bookmark_file(base, _document("https://changed.example"), in_place=True)
+    write_bookmark_file(base, _document("https://changed.example"), in_place=True, confirm=True)
     assert main(["--clean-backups", str(repo_temp_dir)]) == 0
     assert len(list_backups(repo_temp_dir)) == 1
     assert main(["--clean-backups", str(repo_temp_dir), "--yes"]) == 0

@@ -3,15 +3,27 @@
 import argparse
 import logging
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from src.bookmark_io import clean_backups, list_backups, load_chromium_file, merge_documents, output_documents, write_bookmark_file
 from src.chromium import discover_profiles, profile_bookmarks_path
 from src.entity import BookmarkFolder
-from src.functional import visit
+from src.html_io import parse_html, write_html_file
+from src.functional import dump_json_folder, visit
 
 logger = logging.getLogger(__name__)
+
+
+
+@dataclass
+class InputDocument:
+    """Normalized input description used by the merge pipeline."""
+    path: Path
+    format: str
+    shell: dict | None
+    roots: dict[str, BookmarkFolder]
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -27,6 +39,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--strategy", choices=["exact-url"], default="exact-url")
     parser.add_argument("--output")
     parser.add_argument("--output-dir")
+    parser.add_argument("--output-format", choices=["json", "html"])
     parser.add_argument("--in-place", action="store_true")
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--clean-backups", metavar="DIRECTORY")
@@ -70,40 +83,12 @@ def _count_pages(roots: dict[str, BookmarkFolder]) -> int:
     return sum(sum(1 for _ in visit(root)) for root in roots.values())
 
 
-def _write_independent_outputs(output_dir: Path, documents: list[dict], base_path: str) -> None:
-    """写出独立结果，并仅回滚仍属于本次调用的文件。"""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    names = [Path(base_path).stem + "_merged.json"]
-    names.extend(f"source_{index}_merged.json" for index in range(1, len(documents)))
-    targets = [output_dir / name for name in names]
-    if any(target.exists() for target in targets):
-        raise FileExistsError("one or more independent output files already exist")
-    created: dict[Path, tuple[int, int, int, int]] = {}
-    try:
-        for target, document in zip(targets, documents):
-            # 1. 每次写入后记录 identity，避免回滚误删外部替换文件。
-            write_bookmark_file(target, document, output=True)
-            stat = target.stat()
-            created[target] = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
-    except Exception:
-        original_error = sys.exc_info()[1]
-        # 2. 只删除 identity 未变化的本次文件，清理失败不覆盖原始异常。
-        for target, identity in created.items():
-            try:
-                stat = target.stat()
-                current = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
-                if current == identity:
-                    target.unlink()
-            except OSError as cleanup_error:
-                logger.warning("cannot roll back independent output %s: %s", target, cleanup_error)
-        raise original_error
-
-
 def _merge_options(args: argparse.Namespace) -> tuple[object, ...]:
     """返回所有合并模式参数，供互斥校验复用。"""
     return (args.base, args.source, args.base_browser, args.base_profile,
             args.source_browser, args.source_profile, args.output, args.output_dir,
-            args.in_place)
+            args.in_place, args.output_format)
+
 
 def _handle_cleanup(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int | None:
     """执行备份清理模式，非清理命令返回 None。"""
@@ -127,8 +112,66 @@ def _handle_cleanup(args: argparse.Namespace, parser: argparse.ArgumentParser) -
         return 1
 
 
+def _path_format(path: Path) -> str | None:
+    """Return format inferred from a supported file extension."""
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return "json"
+    if suffix in (".html", ".htm"):
+        return "html"
+    return None
+
+
+def _load_input(path: str | Path) -> InputDocument:
+    """Load one JSON or Netscape HTML input description."""
+    target = Path(path)
+    fmt = _path_format(target)
+    if fmt == "html":
+        return InputDocument(target, fmt, None, {"bookmark_bar": parse_html(target)})
+    document, roots = load_chromium_file(target)
+    return InputDocument(target, "json", document, roots)
+
+
+def _json_document(item: InputDocument, merged: dict[str, BookmarkFolder]) -> dict:
+    """Build the input shell or a minimal Chromium shell for HTML."""
+    if item.shell is None:
+        return {"version": "1", "roots": {"bookmark_bar": dump_json_folder(merged["bookmark_bar"])}}
+    return output_documents([(item.shell, item.roots)], merged)[0]
+
+
+def _write_one(target: Path, fmt: str, item: InputDocument, merged: dict[str, BookmarkFolder], *, output: bool, in_place: bool = False, confirm: bool = False) -> tuple[Path, Path | None]:
+    """Serialize one merged result using an explicit format."""
+    if fmt == "html":
+        root = merged.get("bookmark_bar")
+        if root is None:
+            raise ValueError("HTML output requires bookmark_bar root")
+        return write_html_file(target, root, output=output, in_place=in_place, confirm=confirm)
+    return write_bookmark_file(target, _json_document(item, merged), output=output, in_place=in_place, confirm=confirm)
+
+
+def _write_independent_outputs(plans: list[tuple[Path, str, InputDocument]], merged: dict[str, BookmarkFolder]) -> None:
+    """Write all independent outputs with identity-checked rollback."""
+    created: dict[Path, tuple[int, int, int, int]] = {}
+    try:
+        # 1. Write each target and record its identity after commit.
+        for target, fmt, item in plans:
+            _write_one(target, fmt, item, merged, output=True)
+            stat = target.stat()
+            created[target] = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+    except Exception:
+        original = sys.exc_info()[1]
+        # 2. Remove only unchanged files and preserve cleanup errors as warnings.
+        for target, identity in created.items():
+            try:
+                stat = target.stat()
+                current = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+                if current == identity:
+                    target.unlink()
+            except OSError as cleanup_error:
+                logger.warning("cannot roll back independent output %s: %s", target, cleanup_error)
+        raise original
 def main(argv: list[str] | None = None) -> int:
-    """执行安全合并或备份清理；默认只预览，不写文件。"""
+    """Execute one unified JSON/HTML merge pipeline."""
     parser = _parser()
     args = parser.parse_args(argv)
     if args.yes and not args.in_place and not args.clean_backups:
@@ -150,28 +193,45 @@ def main(argv: list[str] | None = None) -> int:
     _configure_logging(args.log_level)
     try:
         base_path, source_paths = _resolve_input_paths(args, parser)
-        inputs = [load_chromium_file(base_path)]
-        inputs.extend(load_chromium_file(path) for path in source_paths)
-        merged_roots = merge_documents(*(roots for _, roots in inputs))
-        base_count = _count_pages(inputs[0][1])
-        source_count = sum(_count_pages(roots) for _, roots in inputs[1:])
-        result_count = _count_pages(merged_roots)
-        print(f"base={base_count} sources={source_count} new={result_count - base_count} result={result_count}")
-        documents = output_documents(inputs, merged_roots)
+        paths = [base_path, *source_paths]
+        # 1. Load every input into the same path/format/shell/roots description.
+        inputs = [_load_input(path) for path in paths]
+        # 2. 合并所有输入并计算结果统计。
+        base_format = inputs[0].format
+        if args.in_place and args.output_format and args.output_format != base_format:
+            parser.error("--in-place output format must match the base input")
+        merged = merge_documents(*(item.roots for item in inputs))
+        count = [_count_pages(item.roots) for item in inputs]
+        print(f"base={count[0]} sources={sum(count[1:])} new={_count_pages(merged) - count[0]} result={_count_pages(merged)}")
+        # 3. 按 dry-run、独立输出或原地覆盖模式分发结果。
+        if not args.output and not args.output_dir and not args.in_place:
+            return 0
         if args.output:
-            write_bookmark_file(args.output, documents[0], output=True)
-        elif args.output_dir:
-            _write_independent_outputs(Path(args.output_dir), documents, base_path)
-        elif args.in_place:
-            if not args.yes:
-                answer = input(f"Replace {base_path}? Type 'yes' to continue: ")
-                if answer.strip().lower() != "yes":
-                    print("cancelled: explicit confirmation required", file=sys.stderr)
-                    return 2
-            _, backup = write_bookmark_file(base_path, documents[0], in_place=True)
-            print(f"backup={backup}")
+            target = Path(args.output)
+            fmt = args.output_format or _path_format(target) or base_format
+            _write_one(target, fmt, inputs[0], merged, output=True)
+            return 0
+        if args.output_dir:
+            output_dir = Path(args.output_dir)
+            plans = []
+            for index, item in enumerate(inputs):
+                fmt = args.output_format or item.format
+                suffix = ".html" if fmt == "html" else ".json"
+                stem = item.path.stem if index == 0 else f"source_{index}"
+                plans.append((output_dir / f"{stem}_merged{suffix}", fmt, item))
+            if any(target.exists() for target, _, _ in plans):
+                raise FileExistsError("one or more independent output files already exist")
+            _write_independent_outputs(plans, merged)
+            return 0
+        if not args.yes:
+            answer = input(f"Replace {base_path}? Type 'yes' to continue: ")
+            if answer.strip().lower() != "yes":
+                print("cancelled: explicit confirmation required", file=sys.stderr)
+                return 2
+        target, backup = _write_one(Path(base_path), base_format, inputs[0], merged, output=False, in_place=True, confirm=True)
+        print(f"backup={backup}")
         return 0
-    except (OSError, ValueError, TypeError, FileExistsError) as exc:
+    except (OSError, ValueError, TypeError, FileExistsError, PermissionError) as exc:
         logger.error("bookmark merge failed: %s", exc)
         print(f"error: {exc}", file=sys.stderr)
         return 1
