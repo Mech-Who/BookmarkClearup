@@ -10,11 +10,13 @@ from datetime import datetime
 from pathlib import Path
 
 from src.entity import BookmarkFolder
-from src.functional import dump_json_folder, parse_json_item
+from src.functional import dump_json_folder, merge, parse_json_item
+
+SUPPORTED_ROOTS = ("bookmark_bar", "other", "synced")
 
 
-def load_bookmark_file(path: Path | str) -> tuple[dict, BookmarkFolder]:
-    """读取文件，校验 bookmark_bar，并返回原始文档和内存树。"""
+def load_chromium_file(path: Path | str) -> tuple[dict, dict[str, BookmarkFolder]]:
+    """读取 Chromium 文档，解析存在的受支持根节点并保留其余字段。"""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"bookmark file does not exist: {path}")
@@ -23,27 +25,48 @@ def load_bookmark_file(path: Path | str) -> tuple[dict, BookmarkFolder]:
             document = json.load(stream)
     except json.JSONDecodeError as exc:
         raise ValueError(f"invalid JSON in bookmark file: {path}") from exc
-    except OSError as exc:
-        raise OSError(f"cannot read bookmark file {path}: {exc}") from exc
-    try:
-        root = document["roots"]["bookmark_bar"]
-    except (TypeError, KeyError) as exc:
-        raise ValueError(f"bookmark file missing roots.bookmark_bar: {path}") from exc
-    if not isinstance(root, dict):
-        raise ValueError(f"roots.bookmark_bar must be an object: {path}")
-    try:
-        return document, parse_json_item(root)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError(f"invalid bookmark_bar in {path}: {exc}") from exc
+    roots = document.get("roots") if isinstance(document, dict) else None
+    if not isinstance(roots, dict):
+        raise ValueError(f"bookmark file roots must be an object: {path}")
+    parsed = {}
+    for name in SUPPORTED_ROOTS:
+        if name not in roots:
+            continue
+        if not isinstance(roots[name], dict):
+            raise ValueError(f"roots.{name} must be an object: {path}")
+        try:
+            root_data = deepcopy(roots[name])
+            root_data.setdefault("date_modified", "0")
+            root_data.setdefault("date_added", "0")
+            root_data.setdefault("date_last_used", "0")
+            parsed[name] = parse_json_item(root_data)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"invalid roots.{name} in {path}: {exc}") from exc
+    if not parsed:
+        raise ValueError(f"bookmark file must contain at least one supported root: {path}")
+    return document, parsed
 
 
-def document_with_root(document: dict, root: BookmarkFolder) -> dict:
-    """复制原始文档，仅替换 bookmark_bar，保留其他字段。"""
-    result = deepcopy(document)
-    result["roots"]["bookmark_bar"] = dump_json_folder(root)
-    return result
+def merge_documents(*root_sets: dict[str, BookmarkFolder]) -> dict[str, BookmarkFolder]:
+    """按根节点名称独立合并多个文档中的书签树。"""
+    names = []
+    for roots in root_sets:
+        for name in SUPPORTED_ROOTS:
+            if name in roots and name not in names:
+                names.append(name)
+    return {name: merge(*(roots[name] for roots in root_sets if name in roots)) for name in names}
 
 
+def output_documents(inputs: list[tuple[dict, dict[str, BookmarkFolder]]], merged: dict[str, BookmarkFolder]) -> list[dict]:
+    """为每个输入重建独立文档外壳，并写入一致的受支持根节点。"""
+    results = []
+    for document, _ in inputs:
+        result = deepcopy(document)
+        roots = result.setdefault("roots", {})
+        for name, root in merged.items():
+            roots[name] = dump_json_folder(root)
+        results.append(result)
+    return results
 def _backup_path(path: Path) -> Path:
     """生成同目录且不会覆盖历史文件的备份路径。"""
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -66,7 +89,7 @@ def _atomic_write(path: Path, document: dict, *, replace: bool = True) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         # 1. 重新解析临时文件，确认内容仍是合法书签文档。
-        load_bookmark_file(temporary)
+        load_chromium_file(temporary)
         # 2. 新文件使用 link，目标存在时原子失败；原地覆盖使用 replace。
         if replace:
             os.replace(temporary, path)

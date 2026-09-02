@@ -94,3 +94,24 @@ uv run python main.py --clean-backups .\backups --start 20260901_000000 --end 20
 ```
 
 清理只匹配本工具生成的 `原文件名.YYYYMMDD_HHMMSS_bookmark_backup[_序号].bak` 文件。
+
+## Chromium 多根与 Profile（阶段 3）
+
+JSON 合并会独立处理 `bookmark_bar`、`other`、`synced` 根节点；缺失根会从其他输入补入。每个独立输出保留对应输入的 checksum、未知顶层字段和未知 roots。checksum 当前原样保留、不重新计算，浏览器可能在加载后重建；真实回写前仍需确认备份可用。
+
+可列出 Chrome/Edge 的 Profile：
+
+```powershell
+uv run python main.py --list-profiles chrome
+uv run python main.py --list-profiles edge
+```
+
+Profile 模式与显式路径模式互斥：
+
+```powershell
+uv run python main.py --base-browser chrome --base-profile Default --source-browser edge --source-profile Default --output-dir .\merged
+```
+
+`--output-dir` 为每个输入生成独立结果（如 `base_merged.json`、`source_1_merged.json`），目标存在时拒绝覆盖；默认仍是 dry-run。`--output` 只生成基准外壳的单一结果，`--in-place` 只允许安全覆盖基准文件并要求确认，不会同时原地覆盖多个浏览器。
+
+阶段 3 的自动化测试仅验证脱敏 Chrome-like/Edge-like 结构的往返。真实 Chrome/Edge 打开、同步和再次保存涉及用户账号及真实配置，属于发布前人工门禁，本阶段尚未执行。

@@ -1,24 +1,14 @@
 import json
 import shutil
-import uuid
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from src.bookmark_io import load_bookmark_file, write_bookmark_file
+from src.bookmark_io import load_chromium_file, write_bookmark_file
 from src.cli import main
 from src.functional import merge, parse_json_item, visit
 
-
-@pytest.fixture
-def repo_temp_dir():
-    path = Path("test") / ".tmp" / uuid.uuid4().hex
-    path.mkdir(parents=True)
-    try:
-        yield path
-    finally:
-        shutil.rmtree(path, ignore_errors=True)
 
 
 def _document(*urls):
@@ -50,12 +40,12 @@ def test_load_rejects_invalid_json_and_missing_bookmark_bar(repo_temp_dir):
     invalid = repo_temp_dir / "invalid.json"
     invalid.write_text("{", encoding="utf-8")
     with pytest.raises(ValueError, match="invalid JSON"):
-        load_bookmark_file(invalid)
+        load_chromium_file(invalid)
 
     missing = repo_temp_dir / "missing.json"
     _write(missing, {"roots": {}})
-    with pytest.raises(ValueError, match="bookmark_bar"):
-        load_bookmark_file(missing)
+    with pytest.raises(ValueError, match="supported root|roots"):
+        load_chromium_file(missing)
 
 
 def test_dry_run_cli_does_not_write_files(repo_temp_dir, capsys):
