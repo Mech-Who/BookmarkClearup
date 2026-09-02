@@ -55,3 +55,31 @@
 - [x] `set` 参数是 `Iteratable` 即可，无需先转换为 `List` 类型。
 - [ ] 使用 `LoggerMeta` 元类来为每一个对象配置 `logger` 是不必要的，因为 `logging` 本身是支持详细信息的（通过 `format` 参数配置即可）。
 - [ ] `merge` 方法使用树的合并方式而不是过滤+插入的方式来解决。
+
+## 六、安全命令行用法
+
+命令必须显式指定基准文件和一个或多个来源文件。默认是 dry-run，只输出统计，不写入书签文件：
+
+```powershell
+uv run python main.py --base .\base.json --source .\edge.json
+```
+
+使用 `--output` 将结果写入一个尚不存在的新文件；已有目标会被拒绝：
+
+```powershell
+uv run python main.py --base .\base.json --source .\edge.json --output .\merged.json
+```
+
+只有明确使用 `--in-place` 才会覆盖基准文件。程序会先在同目录创建带微秒时间戳的 `.bak` 备份，并打印备份路径：
+
+```powershell
+uv run python main.py --base .\base.json --source .\edge.json --in-place
+```
+
+恢复时先关闭浏览器，再将输出的备份文件复制回原始基准路径，例如：
+
+```powershell
+Copy-Item .\base.json.20260902_120000_123456.bak .\base.json -Force
+```
+
+`--strategy` 当前仅支持 `exact-url`；可用 `--log-level DEBUG|INFO|WARNING|ERROR` 调整日志级别。日志自动写入 `logs/bookmarkclearup.log`。

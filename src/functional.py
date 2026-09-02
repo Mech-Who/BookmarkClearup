@@ -114,24 +114,19 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> None:
     from src.entity import BookmarkFolder
 
     # 获得所有中间目录名
-    print(f"{'=' * 10}[Insert bookmarkpage]{'=' * 10}")
-    print(f"New item's path: {bmp.path}")
     paths = [parent.stem for parent in bmp.path.parents]
     # 去除开头的根目录，和书签名
     paths = paths[:-1]
     paths.reverse()
-    print(f"paths: {paths}")
     # 查找现有目录
     root_bmf = bmf
     for idx, path in enumerate(paths):
         # 找到存在的目录
         for base in root_bmf.children:
             if base.name == path:
-                print(f"Dir found: {path}")
                 root_bmf = base
                 break
         else:
-            print(f"Dir not found: '{path}'")
             # 没有该目录，则创建目录对象
             timestamp = str(int(time.time()))
             dir_path = list(bmp.path.parents)[-1 - idx]
@@ -150,7 +145,6 @@ def insert(bmf: "BookmarkFolder", bmp: "BookmarkPage") -> None:
             root_bmf = bmf_dir
     bmp.parent = root_bmf
     root_bmf.append(bmp)
-    print(f"{'=' * 10}[Insert finished]{'=' * 10}")
 
 
 def dump_html(bmf: "BookmarkFolder", save_name: Path | str) -> None:
