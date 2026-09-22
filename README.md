@@ -1,122 +1,252 @@
-# 用于合并 Chrome 和 Edge 浏览器书签的项目
+# BookmarkClearup
 
-## 一、项目介绍
+BookmarkClearup 是一个使用 Python 编写的本地桌面与命令行工具，用于安全合并 Chrome 和 Edge 书签。项目当前版本为 `0.1.0`，支持 Chromium JSON、Netscape Bookmark HTML，以及两种格式的混合输入和转换输出。
 
-使用 python 完成 chrome 和 edge 浏览器的书签合并。原理是解析两个浏览器的本地书签文件（json 格式），然后进行内容合并和回写。
+工具默认只执行 dry-run 并输出统计，不会修改任何书签文件。只有显式指定输出位置或确认原地覆盖时才会写入；原地覆盖前会自动创建备份。
 
-注：以防万一，每次回写会对回写的书签文件（json 格式）进行备份，备份文件与原始文件的位置相同，并带有`.bak`后缀
+## 当前能力
 
-## 二、项目结构
+| 能力 | 支持情况 |
+| --- | --- |
+| Chrome / Edge Chromium JSON | 支持 |
+| Netscape Bookmark HTML | 支持 |
+| JSON 与 HTML 混合合并 | 支持 |
+| JSON 与 HTML 相互转换 | 支持 |
+| Windows / macOS / Linux 常见 Profile 路径 | 支持 |
+| 多个来源文件 | 支持 |
+| PySide6 桌面界面 | 支持 |
+| Firefox Profile 直接读取 | 暂不支持 |
 
-![项目UML与可能结构展示](asset/uml_structure.excalidraw.png)
+JSON 会独立处理 `bookmark_bar`、`other`、`synced` 三个根节点。HTML 没有对应的多根结构，因此统一映射到 `bookmark_bar`。
 
-核心模块目录：`<项目根目录>/src`
+## 环境与安装
 
-- `constant.py`: 包含 windows 格式下 chrome 和 edge 的本地书签文件的默认路径。
-- `entity.py`: 实现了保存书签信息（`BookmarkPage`）和书签目录（`BookmarkFolder`）的抽象类，以及对应书签目录的迭代器（迭代器可以使用书签目录类`get_yield`函数代替）。实现思路是采用组合模式（一种设计模式），将书签构建为组合树，然后进行合并、回写操作。部分操作已经封装为独立的功能函数，详情见`functional.py`文件。
-- `functional.py`: 将一些解析、回写等操作封装为独立的功能函数，可以通过直接调用这些函数实现抽象类的一些功能。
-- `metaclasses.py`: 实现了两个元类：日志元类、计时元类。这两个元类分别提供了类内内置日志和函数执行计时功能。但是只使用了日志元类的功能。计时元类可以用于测试性能。
+- Python 3.11 或更高版本
+- [uv](https://docs.astral.sh/uv/)
 
-功能测试目录：`<项目根目录>/test`
-
-主要提供了部分功能的自动化测试代码。测试文件保留在 `test` 目录中，通过项目配置自动加载。完整测试命令为：`uv run pytest -q`。
-
-## 三、开发环境
-
-本项目使用 uv 进行项目管理，并提供了相应的项目配置文件（`pyproject.toml`）。可以使用 uv 进行方便的环境配置。
-
-本项目大部分功能均使用 python 标准库实现。
-
-## 四、开发感想
-
-本项目原计划是合并两个浏览器使用"导出书签"后的 html 文件进行书签合并的。奈何格式太奇怪，简直就是披着 html 的 xml 文件，没想到比较方便的解析方式。
-
-为了解决这个问题，在网上查找一番后，发现其他人用的都是本地文件中的书签信息，并且是 json 格式的，更好解析。于是，非常高兴的采用了！
-
-虽然这样了，但是希望以后还是能够把 html 格式的书签文件的合并整理完成，毕竟直接修改本地的 json 配置我觉得不太好，而且考虑到文件中有 checksum 这种校验和存在，可能会影响 chrome 或者 edge 的书签同步功能。具体是否有影响还有待测试。
-
-## 五、未来计划
-
-说是未来计划，但是不一定会做：
-
-- [ ] 基于 html 的解析和回写
-- [ ] 更高性能的合并操作
-- [ ] 跨平台支持
-- [ ] 多浏览器支持
-
-补充其他不足：
-
-- [ ] 对一些函数的传参没有做健壮性检查（类型、内容检查）。
-- [ ] 尝试使用`json.load()`函数的`object_hook`参数来设置生成类型。
-- [x] `NoReturn`用于`会出现死循环`或者`抛出异常`的情况，而不是无返回值的情况，无返回值的情况应该使用`None`。
-- [ ] 尝试使用 `TypedDict`，对字典类型做类型标注。
-- [x] `Generator`类型标注不完整，应该注明内容元素的类型
-- [ ] 使用 `BeautifulSoup` 可以完成带有`<DT> <DL> <DD>` 标签的 html 文件。这三个标签是允许没有闭合标签的。
-- [x] `set` 参数是 `Iteratable` 即可，无需先转换为 `List` 类型。
-- [ ] 使用 `LoggerMeta` 元类来为每一个对象配置 `logger` 是不必要的，因为 `logging` 本身是支持详细信息的（通过 `format` 参数配置即可）。
-- [ ] `merge` 方法使用树的合并方式而不是过滤+插入的方式来解决。
-
-## 六、安全命令行用法
-
-命令必须显式指定基准文件和一个或多个来源文件。默认是 dry-run，只输出统计，不写入书签文件：
+在项目根目录安装运行和开发依赖：
 
 ```powershell
-uv run python main.py --base .\base.json --source .\edge.json
+uv sync
 ```
 
-使用 `--output` 将结果写入一个尚不存在的新文件；已有目标会被拒绝：
+查看全部命令行参数：
 
 ```powershell
-uv run python main.py --base .\base.json --source .\edge.json --output .\merged.json
+uv run python main.py --help
 ```
 
-只有明确使用 `--in-place` 才会覆盖基准文件。程序会先在同目录创建带微秒时间戳的 `.bak` 备份，并打印备份路径：
+## 桌面界面
+
+启动 PySide6 桌面界面：
 
 ```powershell
-uv run python main.py --base .\base.json --source .\edge.json --in-place
+uv run python gui_main.py
 ```
 
-恢复时先关闭浏览器，再将输出的备份文件复制回原始基准路径，例如：
+“合并书签”页支持文件或 Chrome/Edge Profile 输入，可选择仅预览、保存单一结果、生成各浏览器可独立采用的结果，或确认后覆盖基准文件。右侧显示合并统计、操作摘要和运行日志。
+
+“备份管理”页支持扫描指定目录，并按起止时间筛选、清理本工具生成的备份。GUI 默认使用仅预览模式；覆盖书签和删除备份均需弹窗确认。
+
+界面设计与安全交互说明见 [`doc/ai/GUI功能设计.md`](doc/ai/GUI功能设计.md)。
+
+## 快速开始
+
+### 预览合并结果
+
+命令必须指定一个基准文件和至少一个来源文件。默认只打印统计，不创建或修改文件：
 
 ```powershell
-Copy-Item .\base.json.20260902_120000_123456.bak .\base.json -Force
+uv run python main.py --base .\chrome.json --source .\edge.json
 ```
 
-`--strategy` 当前仅支持 `exact-url`；可用 `--log-level DEBUG|INFO|WARNING|ERROR` 调整日志级别。日志自动写入 `logs/bookmarkclearup.log`。
-
-原地覆盖必须显式确认：交互时输入 `yes`，或自动化时同时传入 `--in-place --yes`；未确认会取消写入。每次覆盖只创建一个备份，历史备份不会自动清理。
-
-备份清理默认只列出匹配文件，不删除任何内容。按时间范围预览或确认删除：
+可以一次合并多个来源：
 
 ```powershell
-uv run python main.py --clean-backups .\backups --start 20260901_000000 --end 20260930_235959
-uv run python main.py --clean-backups .\backups --start 20260901_000000 --end 20260930_235959 --yes
+uv run python main.py --base .\chrome.json --source .\edge.json .\archive.html
 ```
 
-清理只匹配本工具生成的 `原文件名.YYYYMMDD_HHMMSS_bookmark_backup[_序号].bak` 文件。
+输出格式类似：
 
-## Chromium 多根与 Profile（阶段 3）
+```text
+base=120 sources=80 new=15 result=135
+```
 
-JSON 合并会独立处理 `bookmark_bar`、`other`、`synced` 根节点；缺失根会从其他输入补入。每个独立输出保留对应输入的 checksum、未知顶层字段和未知 roots。checksum 当前原样保留、不重新计算，浏览器可能在加载后重建；真实回写前仍需确认备份可用。
+### 写入新文件
 
-可列出 Chrome/Edge 的 Profile：
+使用 `--output` 创建单一结果。目标文件必须尚不存在，格式默认根据目标扩展名判断：
+
+```powershell
+uv run python main.py --base .\chrome.json --source .\edge.json --output .\merged.json
+```
+
+通过目标扩展名或 `--output-format` 可以转换格式：
+
+```powershell
+uv run python main.py --base .\chrome.json --source .\edge.html --output .\merged.html
+uv run python main.py --base .\bookmarks.html --source .\edge.json --output .\merged.json --output-format json
+```
+
+使用 `--output-dir` 为每个输入生成一个采用其各自外壳和格式的独立结果：
+
+```powershell
+uv run python main.py --base .\chrome.json --source .\edge.json --output-dir .\merged
+```
+
+基准结果使用 `{基准文件名}_merged`，来源结果依次使用 `source_1_merged`、`source_2_merged`。任一目标已存在时，整组输出会被拒绝。
+
+## 浏览器 Profile 模式
+
+项目可以发现 Chrome 或 Edge 的本地 Profile：
 
 ```powershell
 uv run python main.py --list-profiles chrome
 uv run python main.py --list-profiles edge
 ```
 
-Profile 模式与显式路径模式互斥：
+使用 Profile 路径执行合并：
 
 ```powershell
-uv run python main.py --base-browser chrome --base-profile Default --source-browser edge --source-profile Default --output-dir .\merged
+uv run python main.py `
+  --base-browser chrome --base-profile Default `
+  --source-browser edge --source-profile Default `
+  --output-dir .\merged
 ```
 
-`--output-dir` 为每个输入生成独立结果（如 `base_merged.json`、`source_1_merged.json`），目标存在时拒绝覆盖；默认仍是 dry-run。`--output` 只生成基准外壳的单一结果，`--in-place` 只允许安全覆盖基准文件并要求确认，不会同时原地覆盖多个浏览器。
+Profile 模式与 `--base`、`--source` 显式路径模式互斥。当前支持 Windows、macOS、Linux 的常见 Chrome 和 Edge 用户数据目录。
 
-阶段 3 的自动化测试仅验证脱敏 Chrome-like/Edge-like 结构的往返。真实 Chrome/Edge 打开、同步和再次保存涉及用户账号及真实配置，属于发布前人工门禁，本阶段尚未执行。
-## HTML 工作流与跨平台路径
+## 安全写回与备份
 
-Netscape Bookmark HTML 使用 UTF-8 读写，保留 H1/TITLE 根名、目录层级、标题、URL、ADD_DATE 与 LAST_MODIFIED。HTML 时间为 Unix 秒，内部统一转换为 Chromium WebKit 微秒；不理解的扩展属性不写回。HTML 无 Chromium 多根概念，统一映射为 `bookmark_bar`；JSON 的 `other`、`synced` 根仍独立合并。CLI 会按 `.json`、`.html`、`.htm` 自动识别，亦可用 `--output-format html` 导出。默认 dry-run，输出文件拒绝覆盖，原地写回需显式确认并创建时间命名备份。
+只有 `--in-place` 会覆盖基准文件。交互运行时必须输入 `yes`：
 
-Chrome/Edge 路径支持 Windows、macOS、Linux。Firefox 当前仅评估格式，未实现适配。发布前仍需使用隔离配置人工验证真实浏览器打开、同步及再次保存。
+```powershell
+uv run python main.py --base .\base.json --source .\edge.json --in-place
+```
+
+自动化场景必须同时传入 `--yes`：
+
+```powershell
+uv run python main.py --base .\base.json --source .\edge.json --in-place --yes
+```
+
+写回过程会在同一目录创建临时文件，完成序列化和格式验证后再原子替换原文件。覆盖前生成一份备份，命名格式如下：
+
+```text
+原文件名.YYYYMMDD_HHMMSS_bookmark_backup[_序号].bak
+```
+
+恢复前应先关闭浏览器，再将备份复制回原始路径：
+
+```powershell
+Copy-Item .\base.json.20260902_120000_bookmark_backup.bak .\base.json -Force
+```
+
+### 清理备份
+
+备份不会自动删除。`--clean-backups` 默认只列出匹配文件，可用起止时间缩小范围：
+
+```powershell
+uv run python main.py --clean-backups .\bookmarks --start 20260901_000000 --end 20260930_235959
+```
+
+确认列表无误后增加 `--yes` 执行删除：
+
+```powershell
+uv run python main.py --clean-backups .\bookmarks --start 20260901_000000 --end 20260930_235959 --yes
+```
+
+清理命令只识别本工具生成的备份文件名，时间范围包含起止时刻。
+
+## 合并规则
+
+- 当前策略为 `exact-url`。
+- 合并按书签根节点和目录路径分别进行。
+- 相同 URL 位于不同目录时会保留多份。
+- 同一目录中的相同 URL 只保留一份。
+- 冲突时依次比较 `date_last_used` 和 `date_added`，保留时间较新的记录；非法时间按 `0` 处理。
+- 合并保持稳定顺序，不修改输入对象。
+- 来源中缺失的受支持根节点会从其他输入补入。
+
+Chromium JSON 输出会保留对应输入的 checksum、未知顶层字段和未知 roots。checksum 当前原样保留，不会重新计算，浏览器可能在加载后自行重建。
+
+## HTML 工作流
+
+HTML 按 Netscape Bookmark 格式以 UTF-8 读写，保留 H1/TITLE 根名称、目录层级、标题、URL、`ADD_DATE` 和 `LAST_MODIFIED`。
+
+HTML 使用 Unix 秒，Chromium JSON 使用 WebKit 微秒，工具会在两种时间格式之间转换。无法识别的 HTML 扩展属性不会写回。
+
+HTML 输入统一映射为 `bookmark_bar`。导出 HTML 时也只输出 `bookmark_bar`；JSON 中的 `other` 和 `synced` 仍会在 JSON 结果中独立合并。
+
+## 项目结构
+
+![项目 UML 与结构示意](asset/uml_structure.excalidraw.png)
+
+```text
+BookmarkClearup/
+├── main.py                 # CLI 入口
+├── src/
+│   ├── cli.py              # 参数解析与工作流调度
+│   ├── entity.py           # 书签树模型
+│   ├── functional.py       # 解析、遍历与合并逻辑
+├── gui_main.py             # GUI 入口
+│   ├── bookmark_io.py      # Chromium JSON 读写与备份清理
+│   ├── html_io.py          # Netscape HTML 导入导出
+│   ├── gui.py              # PySide6 桌面界面
+│   ├── safe_file.py        # 安全原子写入
+│   ├── chromium.py         # 浏览器路径与 Profile 发现
+│   ├── constant.py         # 默认路径常量
+│   └── metaclasses.py      # 日志与计时元类
+├── test/                   # pytest 测试、GUI 测试与脱敏 fixture
+├── asset/                  # 项目结构图
+└── doc/ai/                 # 开发计划与阶段记录
+```
+
+## 测试
+
+运行完整自动化测试：
+
+```powershell
+uv run pytest -q
+```
+
+当前基线包含 78 项测试，覆盖核心合并规则、JSON/HTML 往返、安全写入、备份清理、Profile 路径、格式转换、失败回滚和 GUI 参数映射与确认流程。
+
+测试使用脱敏的 Chrome-like 与 Edge-like fixture，不读取本机真实浏览器数据。
+
+## 已知限制
+
+- 尚未在隔离账号下完成真实 Chrome/Edge 打开、同步和再次保存的人工验证。
+- Chromium checksum 只保留原值，不重新计算。
+- Firefox 尚未适配。
+- 项目尚未配置静态检查、覆盖率、CI 和正式发布流程。
+- 当前版本定位为经过自动化测试的本地开发工具，不应视为已完成发布验收的正式产品。
+
+## 开发感想
+
+### 2025-03-25：从 Chromium JSON 开始
+
+项目最初计划合并浏览器导出的 HTML 书签。Netscape Bookmark HTML 允许部分标签不闭合，结构更像宽松的树形交换格式，当时没有找到足够稳妥的解析方式，因此先转向结构明确的 Chromium 本地 JSON 文件。
+
+JSON 更容易解析和合并，但直接修改浏览器配置也带来了新的顾虑：checksum、同步以及浏览器重新保存时的行为都需要验证。这些顾虑后来成为 dry-run、备份和原子写入设计的起点。
+
+### 2026-09-02：补齐安全性与完整工作流
+
+这一轮开发重新建立了自动化测试基线，明确了 URL 去重和较新记录胜出的规则，并把原来的脚本整理为默认 dry-run 的 CLI。写回现在需要显式确认，并通过同目录临时文件、格式验证、备份和原子替换降低数据损坏风险。
+
+项目也重新处理了最初放弃的 HTML 工作流。借助 `lxml` 解析 Netscape 格式后，已经可以保留主要层级和时间信息，并支持 JSON/HTML 混合合并。Chrome 和 Edge 的常见 Profile 路径也扩展到了 Windows、macOS、Linux。
+
+### 2026-09-03：后续开发思路
+
+下一步首先应在隔离浏览器配置和测试账号下完成发布门禁，验证 Chrome/Edge 能否正常打开合并结果、参与同步并再次保存，尤其需要观察 checksum 的实际处理方式。
+
+之后再补齐静态检查、覆盖率、CI、安装方式、故障排查和版本发布流程，将项目从本地脚本整理为可安装的正式 CLI 包。
+
+性能优化应建立在真实规模基准上。需要分别测量解析、合并和序列化，再决定是否引入 URL 索引或调整树合并策略，避免用复杂实现交换未经证实的收益。
+
+Firefox 适配可以作为独立阶段评估。它不应只增加一个路径常量，而应先确认书签存储格式、写回安全性及与现有 JSON/HTML 中间模型的边界。
+
+### 2026-09-22：新增桌面界面
+
+项目新增基于 PySide6 的桌面工作台，将文件选择、浏览器 Profile、输出方式、格式转换、合并统计和运行日志集中到同一界面。备份扫描和按时间范围清理也有独立页面。
+
+GUI 继续复用现有 CLI 与安全写入逻辑：默认只预览，覆盖基准文件前自动备份并要求弹窗确认，删除备份同样需要显式确认。本轮将自动化测试基线扩充到 78 项。
